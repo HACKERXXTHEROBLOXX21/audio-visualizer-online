@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Audio Visualizer - Pro Studio Suite</title>
+    <style>
+        :root {
+            --shake-x: 0px;
+            --shake-y: 0px;
+            --scale: 1;
+        }
+        
+        body {
+            margin: 0;
+            background: #000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            color: white;
+            font-family: sans-serif;
+            overflow: hidden;
+        }
+
+        /* HARDWARE ACCELERATED VIDEO BACKGROUND LAYER */
+        #bgLayerContainer {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #0f0f0f;
+            z-index: 0;
+            overflow: hidden;
+            transform: translate(var(--shake-x), var(--shake-y)) scale(calc(var(--scale) * 1.1));
+            transform-origin: center;
+            transition: transform 0.03s ease-out;
+        }
+
+        #videoBg, #imageBg {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: translate(-50%, -50%);
+            display: none;
+        }
+
+        /* Default background placeholder */
+        #bgLayerContainer.default-bg {
+            background: radial-gradient(circle, #1a1c29 0%, #08090f 100%);
+        }
+
+        .visualizer-container {
+            position: relative;
+            width: 80%;
+            height: 38vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1;
+            transform: translate(var(--shake-x), var(--shake-y)) scale(var(--scale));
+            transform-origin: center;
+            transition: transform 0.03s ease-out;
+        }
+
+        canvas {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            z-index: 2;
+        }
+
+        #screenText {
+            position: relative;
+            z-index: 3;
+            font-size: 3rem;
+            font-weight: bold;
+            text-align: center;
+            text-shadow: 2px 2px 12px rgba(0,0,0,0.9);
+            pointer-events: none;
+        }
+
+        /* DEVELOPER COMMAND PROMPT PANEL */
+        .terminal-panel {
+            position: fixed;
+            top: -300px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 70%;
+            height: 220px;
+            background: rgba(5, 5, 5, 0.96);
+            border: 2px solid #333;
+            border-top: none;
+            border-bottom-left-radius: 8px;
+            border-bottom-right-radius: 8px;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+            font-family: 'Courier New', Courier, monospace;
+            transition: top 0.3s ease-in-out;
+            box-shadow: 0px 10px 30px rgba(0,0,0,0.7);
+        }
+        .terminal-panel.open {
+            top: 0;
+        }
+        .terminal-history {
+            flex-grow: 1;
+            overflow-y: auto;
+            font-size: 0.85rem;
+            color: #00ff66;
+            margin-bottom: 8px;
+            white-space: pre-wrap;
+            padding-right: 5px;
+        }
+        .terminal-input-row {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            border-top: 1px solid #222;
+            padding-top: 5px;
+        }
+        .terminal-prompt {
+            color: #00ffff;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+        .terminal-input {
+            flex-grow: 1;
+            background: transparent;
+            border: none;
+            color: #ffffff;
+            font-family: inherit;
+            font-size: 0.9rem;
+            outline: none;
+        }
+
+        .controls {
+            margin-top: 10px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.92);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #333;
+            max-width: 92%;
+            justify-content: center;
+            max-height: 52vh;
+            overflow-y: auto;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .row-group {
+            display: flex;
+            flex-direction: row;
+            gap: 8px;
+            align-items: center;
+        }
+        label.btn, button, .discord-btn {
+            padding: 8px 15px;
+            background: #222;
+            border: 1px solid #444;
+            color: #fff;
+            cursor: pointer;
+            border-radius: 5px;
+            font-size: 0.9rem;
+            text-align: center;
+            user-select: none;
+            text-decoration: none;
+            display: inline-block;
+        }
+        label.btn:hover, button:hover, .discord-btn:hover { background: #333; }
+        
+        .discord-btn {
+            background: #5865F2;
+            border-color: #454FBF;
+            font-weight: bold;
+        }
+        .discord-btn:hover { background: #454FBF; }
+        
+        .terminal-toggle-btn {
+            background: #2d3748;
+            border-color: #4a5568;
+            color: #a0aec0;
+            font-family: monospace;
+        }
+        .terminal-toggle-btn:hover { background: #4a5568; color: #fff; }
+
+        .points-display {
+            background: #111;
+            border: 1px solid #ffaa00;
+            color: #ffaa00;
+            padding: 8px 12px;
+            border-radius: 5px;
+            font-weight: bold;
+            font-family: monospace;
+            font-size: 0.95rem;
+        }
+        
+        .premium-status {
+            background: #111;
+            border: 1px solid #00ffcc;
+            color: #00ffcc;
+            padding: 8px 12px;
+            border-radius: 5px;
+            font-weight: bold;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .nitro-badge {
+            width: 18px;
+            height: 18px;
+            object-fit: contain;
+            display: none;
+        }
+
+        button.active {
+            background: #0070f3;
+            border-color: #0080ff;
+        }
+        button.vegas-render-btn {
+            background: #1a365d;
+            border-color: #2b6cb0;
+            font-weight: bold;
+            color: #e2e8f0;
+        }
+        button.vegas-render-btn:hover { background: #2b6cb0; border-color: #4299e1; }
+        button.rendering {
+            background: #9b2c2c !important;
+            border-color: #e53e3e !important;
+            animation: renderPulse 2s infinite ease-in-out;
+        }
+        @keyframes renderPulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        input[type="file"], select, input[type="text"], input[type="range"] {
+            background: #222;
+            border: 1px solid #444;
+            color: white;
+            padding: 8px;
+            border-radius: 5px;
+        }
+        #customShakePanel {
+            display: none;
+            background: rgba(25, 25, 25, 0.9);
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px dashed #555;
+            flex-direction: row;
+            gap: 15px;
+            align-items: center;
+        }
+        .slider-item {
+            display: flex;
+            flex-direction: column;
+            font-size: 0.8rem;
+            color: #aaa;
+        }
+        .slider-item span {
+            font-size: 0.75rem;
+            color: #0070f3;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="bgLayerContainer" class="default-bg">
+        <video id="videoBg" autoplay loop muted playsinline></video>
+        <img id="imageBg" alt="Static Backdrop">
+    </div>
+
+    <div id="developerConsole" class="terminal-panel">
+        <div id="terminalHistory" class="terminal-history">Welcome to Studio Terminal Server OS. Type 'help' for instructions.</div>
+        <div class="terminal-input-row">
+            <span class="terminal-prompt">admin@studio:~$</span>
+            <input type="text" id="terminalInput" class="terminal-input" placeholder="Enter systems automation command..." autofocus>
+        </div>
+    </div>
+
+    <div class="visualizer-container">
+        <canvas id="visualizer"></canvas>
+        <div id="screenText">VISUALIZER</div>
+    </div>
+    
+    <div class="controls">
+        <div class="control-group">
+            <label>HQ Central & Account Balance</label>
+            <div class="row-group">
+                <button onclick="launchSecureDiscord()" class="discord-btn">💬 Join Discord!</button>
+                <button id="toggleTerminalBtn" class="terminal-toggle-btn">⌨ Terminal CLI [`]</button>
+                <div class="points-display" id="pointsBox">Points: 0</div>
+                <div class="premium-status" id="premiumStatusBox">
+                    <img id="nitroBadge" class="nitro-badge" src="https://static.wikia.nocookie.net/discord/images/b/b8/Nitro_badge.png/revision/latest?cb=20200615092656" alt="Nitro">
+                    <span id="statusText">Premium: Checking...</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label>Premium Features Store</label>
+            <div class="row-group">
+                <button id="buyDayBtn" style="color: #ffcc00;">1 Day (350 pts)</button>
+                <button id="buyWeekBtn" style="color: #ffcc00;">1 Week (650 pts)</button>
+                <button id="buyMonthBtn" style="color: #ffcc00;">1 Month (1400 pts)</button>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label>Audio Source</label>
+            <div class="row-group">
+                <label for="audioInput" class="btn">Upload File</label>
+                <input type="file" id="audioInput" accept="audio/*" style="display:none;">
+                <input type="text" id="audioUrlInput" placeholder="Paste Audio URL..." style="width: 140px;">
+                <button id="loadUrlBtn">Load URL</button>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label>Playback Deck</label>
+            <div class="row-group">
+                <button id="skipBackBtn">⏮ -10s</button>
+                <button id="playBtn" style="font-weight: bold; min-width: 65px;">Play</button>
+                <button id="skipFwdBtn">10s ⏭</button>
+                <button id="loopBtn">🔁 Loop</button>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label>Output Render Engine</label>
+            <div class="row-group">
+                <select id="vegasTemplateSelect">
+                    <option value="30" selected>Internet HD 720p (30 FPS Draft)</option>
+                    <option value="60">Internet HD 1080p (60 FPS Master)</option>
+                    <option value="60-pro" id="proTemplateOpt" disabled>⭐ Pro Archive (1080p High-Bitrate) [PREMIUM]</option>
+                </select>
+                <button id="vegasExportBtn" class="vegas-render-btn">💾 Save Video As...</button>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label>Speed & Pitch Engine</label>
+            <div class="row-group">
+                <div class="slider-item">
+                    <label>Speed: <span id="speedVal">1.0x</span></label>
+                    <input type="range" id="speedSlider" min="0.25" max="3" step="0.05" value="1">
+                </div>
+                <div class="slider-item" style="align-items: center; justify-content: center; padding-left: 5px;">
+                    <label for="preservePitchCheck" style="font-size: 0.75rem; cursor:pointer;">Lock Pitch</label>
+                    <input type="checkbox" id="preservePitchCheck" checked style="cursor:pointer;">
+                </div>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label>Visual Style Theme</label>
+            <select id="colorThemeSelect">
+                <option value="classic">Classic Cyan Wave</option>
+                <option value="neon-spectrum" id="proThemeOpt2" disabled>⭐ Neon Dynamic Rainbow [PREMIUM]</option>
+                <option value="matrix-code" id="proThemeOpt3" disabled>⭐ Digital Cyber Matrix [PREMIUM]</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label>Studio Backgrounds</label>
+            <div class="row-group">
+                <label for="bgInput" class="btn">Upload Image BG</label>
+                <input type="file" id="bgInput" accept="image/*" style="display:none;">
+
+                <label for="videoBgInput" class="btn" style="background: #a435f0; border-color: #8922d4;">🎬 Upload Video BG!</label>
+                <input type="file" id="videoBgInput" accept="video/*" style="display:none;">
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label>Screen Text</label>
+            <input type="text" id="textModifier" value="VISUALIZER">
+        </div>
+
+        <div class="control-group">
+            <label>Font</label>
+            <select id="fontSelect">
+                <option value="sans-serif">Sans-Serif</option>
+                <option value="serif">Serif</option>
+                <option value="monospace">Monospace</option>
+                <option value="'Impact', sans-serif">Impact</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label>Shake Mode Engine</label>
+            <select id="shakeMode">
+                <option value="none">No Shake</option>
+                <option value="mode1">Mode 1: Up-Down Jitter</option>
+                <option value="mode2" selected>Mode 2: Follow Beat (Pulse)</option>
+                <option value="mode3">Mode 3: Left-Right Jitter</option>
+                <option value="mode4">Mode 4: Extreme Earthquake</option>
+                <option value="mode5">Mode 5: Smooth Ambient Wave</option>
+                <option value="custom">★ Custom Mode</option>
+            </select>
+        </div>
+
+        <div id="customShakePanel" class="control-group">
+            <div class="slider-item"><label>Horizontal</label><input type="range" id="customX" min="0" max="100" value="0"></div>
+            <div class="slider-item"><label>Vertical</label><input type="range" id="customY" min="0" max="100" value="0"></div>
+            <div class="slider-item"><label>Pulse</label><input type="range" id="customScale" min="0" max="50" value="15"></div>
+        </div>
+    </div>
+
+    <script>
+        const audio = new Audio();
+        audio.crossOrigin = "anonymous"; 
+
+        const canvas = document.getElementById('visualizer');
+        const ctx = canvas.getContext('2d');
+        const screenText = document.getElementById('screenText');
+        
+        // Background Dom Layers
+        const bgLayerContainer = document.getElementById('bgLayerContainer');
+        const videoBg = document.getElementById('videoBg');
+        const imageBg = document.getElementById('imageBg');
+        const videoBgInput = document.getElementById('videoBgInput');
+        const bgInput = document.getElementById('bgInput');
+
+        // Form Binding Nodes
+        const audioInput = document.getElementById('audioInput');
+        const audioUrlInput = document.getElementById('audioUrlInput');
+        const loadUrlBtn = document.getElementById('loadUrlBtn');
+        const textModifier = document.getElementById('textModifier');
+        const fontSelect = document.getElementById('fontSelect');
+        const shakeMode = document.getElementById('shakeMode');
+        const colorThemeSelect = document.getElementById('colorThemeSelect');
+        
+        const playBtn = document.getElementById('playBtn');
+        const loopBtn = document.getElementById('loopBtn');
+        const skipBackBtn = document.getElementById('skipBackBtn');
+        const skipFwdBtn = document.getElementById('skipFwdBtn');
+        
+        const speedSlider = document.getElementById('speedSlider');
+        const speedVal = document.getElementById('speedVal');
+        const preservePitchCheck = document.getElementById('preservePitchCheck');
+        const vegasExportBtn = document.getElementById('vegasExportBtn');
+        const vegasTemplateSelect = document.getElementById('vegasTemplateSelect');
+
+        // Accounts & Balances Matrix
+        const pointsBox = document.getElementById('pointsBox');
+        const premiumStatusBox = document.getElementById('premiumStatusBox');
+        const statusText = document.getElementById('statusText');
+        const nitroBadge = document.getElementById('nitroBadge');
+        
+        const buyDayBtn = document.getElementById('buyDayBtn');
+        const buyWeekBtn = document.getElementById('buyWeekBtn');
+        const buyMonthBtn = document.getElementById('buyMonthBtn');
+        const proTemplateOpt = document.getElementById('proTemplateOpt');
+        const proThemeOpt2 = document.getElementById('proThemeOpt2');
+        const proThemeOpt3 = document.getElementById('proThemeOpt3');
+
+        // Console Objects
+        const developerConsole = document.getElementById('developerConsole');
+        const terminalInput = document.getElementById('terminalInput');
+        const terminalHistory = document.getElementById('terminalHistory');
+        const toggleTerminalBtn = document.getElementById('toggleTerminalBtn');
+
+        const customShakePanel = document.getElementById('customShakePanel');
+        const customX = document.getElementById('customX');
+        const customY = document.getElementById('customY');
+        const customScale = document.getElementById('customScale');
+
+        let audioContext, analyser, dataArray, source;
+        let mediaRecorder, recordedChunks = [], isRendering = false, audioStreamDest; 
+
+        // --- CORE MEMORY DATABASES ---
+        let points = parseInt(localStorage.getItem('viz_user_points')) || 0;
+        let premiumUntil = parseInt(localStorage.getItem('viz_premium_until')) || 0; 
+        let lastPointsCommandTime = parseInt(localStorage.getItem('viz_last_cmd_points')) || 0;
+
+        // Auto Generation Tick (Accumulates 1 point/sec)
+        setInterval(() => {
+            points += 1;
+            pointsBox.innerText = `Points: ${points}`;
+            localStorage.setItem('viz_user_points', points);
+            updatePremiumUI();
+        }, 1000);
+
+        function updatePremiumUI() {
+            const now = Date.now();
+            if (now < premiumUntil) {
+                const timeLeft = premiumUntil - now;
+                const hoursLeft = Math.ceil(timeLeft / (1000 * 60 * 60));
+                
+                if (hoursLeft > 24) {
+                    statusText.innerText = `👑 Premium: ${Math.ceil(hoursLeft / 24)} Days Left`;
+                } else {
+                    statusText.innerText = `👑 Premium: ${hoursLeft}h Left`;
+                }
+                premiumStatusBox.style.borderColor = "#00ffcc";
+                premiumStatusBox.style.color = "#00ffcc";
+                nitroBadge.style.display = "inline-block";
+                
+                proTemplateOpt.disabled = false;
+                proThemeOpt2.disabled = false;
+                proThemeOpt3.disabled = false;
+            } else {
+                statusText.innerText = "❌ No Premium Active";
+                premiumStatusBox.style.borderColor = "#ff4444";
+                premiumStatusBox.style.color = "#ff4444";
+                nitroBadge.style.display = "none";
+                
+                proTemplateOpt.disabled = true;
+                proThemeOpt2.disabled = true;
+                proThemeOpt3.disabled = true;
+                if (vegasTemplateSelect.value === '60-pro') vegasTemplateSelect.value = '30';
+                if (colorThemeSelect.value === 'neon-spectrum' || colorThemeSelect.value === 'matrix-code') colorThemeSelect.value = 'classic';
+            }
+        }
+
+        // Processing Transactions Store Block
+        function attemptPurchase(cost, msDuration) {
+            if (points < cost) {
+                alert(`Insufficient balance! You need ${cost} points.`);
+                return;
+            }
+            points -= cost;
+            pointsBox.innerText = `Points: ${points}`;
+            localStorage.setItem('viz_user_points', points);
+
+            const now = Date.now();
+            premiumUntil = (now < premiumUntil) ? premiumUntil + msDuration : now + msDuration;
+            localStorage.setItem('viz_premium_until', premiumUntil);
+            updatePremiumUI();
+            printToTerminal(`[SYSTEM]: Transaction Authorized. Premium license extended.`);
+        }
+
+        buyDayBtn.addEventListener('click', () => attemptPurchase(350, 24 * 60 * 60 * 1000));
+        buyWeekBtn.addEventListener('click', () => attemptPurchase(650, 7 * 24 * 60 * 60 * 1000));
+        buyMonthBtn.addEventListener('click', () => attemptPurchase(1400, 30 * 24 * 60 * 60 * 1000));
+
+        // Initial setup boot sequences
+        pointsBox.innerText = `Points: ${points}`;
+        updatePremiumUI();
+
+        // --- COMMAND LINE PANEL MANAGEMENT SYSTEM ---
+        function toggleTerminal() {
+            developerConsole.classList.toggle('open');
+            if (developerConsole.classList.contains('open')) {
+                setTimeout(() => terminalInput.focus(), 100);
+            }
+        }
+        toggleTerminalBtn.addEventListener('click', toggleTerminal);
+        
+        // Listen globally for backtick character key mapping hotkey triggers
+        window.addEventListener('keydown', (e) => {
+            if (e.key === '`') {
+                e.preventDefault();
+                toggleTerminal();
+            }
+        });
+
+        function printToTerminal(text) {
+            terminalHistory.textContent += "\n" + text;
+            terminalHistory.scrollTop = terminalHistory.scrollHeight;
+        }
+
+        terminalInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                const rawInput = this.value.trim();
+                this.value = '';
+                if (!rawInput) return;
+
+                printToTerminal(`admin@studio:~$ ${rawInput}`);
+                executeTerminalCommand(rawInput);
+            }
+        });
+
+        function executeTerminalCommand(inputStr) {
+            const parts = inputStr.split(' ');
+            const cmd = parts[0].toLowerCase();
+            const args = parts.slice(1);
+
+            switch (cmd) {
+                case 'help':
+                    printToTerminal(
+                        "--- VISUALIZER TERMINAL HELP CODES ---\n" +
+                        " > help                      Display command manual logs.\n" +
+                        " > addpoints [amount]        Inject developer server point balances.\n" +
+                        " > settext [message]         Force system main rendering titles.\n" +
+                        " > shake [0-5]               Hot-swap configuration tracking shake engines.\n" +
+                        " > clear                     Wipe active terminal panel history display matrices.\n" +
+                        "--------------------------------------"
+                    );
+                    break;
+
+                case 'addpoints':
+                    const amt = parseInt(args[0]);
+                    if (isNaN(amt) || amt <= 0) {
+                        printToTerminal("[ERROR]: Invalid usage setup. Syntax pattern: addpoints [number]");
+                        break;
+                    }
+                    if (amt > 5000) {
+                        printToTerminal("[SECURITY ACTION REDIRECT]: Request rejected! Injection limits capped at 5000 points.");
+                        break;
+                    }
+                    
+                    // Cooldown Verification Logic Check (50 Seconds Matrix Cycle)
+                    const currentTime = Date.now();
+                    const secondsPassed = (currentTime - lastPointsCommandTime) / 1000;
+                    if (secondsPassed < 50) {
+                        const remaining = Math.ceil(50 - secondsPassed);
+                        printToTerminal(`[COOLDOWN ACTIVE]: Server matrix locking. Wait ${remaining} seconds before re-calling command.`);
+                        break;
+                    }
+
+                    // Apply verification adjustments
+                    points += amt;
+                    lastPointsCommandTime = currentTime;
+                    localStorage.setItem('viz_user_points', points);
+                    localStorage.setItem('viz_last_cmd_points', lastPointsCommandTime);
+                    pointsBox.innerText = `Points: ${points}`;
+                    printToTerminal(`[SUCCESS]: Balance modified securely! Verified +${amt} points allocated.`);
+                    break;
+
+                case 'settext':
+                    if (args.length === 0) {
+                        printToTerminal("[ERROR]: Syntax execution requires input formatting values.");
+                        break;
+                    }
+                    const fullTxt = args.join(' ');
+                    textModifier.value = fullTxt;
+                    screenText.innerText = fullTxt;
+                    printToTerminal(`[SYSTEM]: Screen canvas text updated -> "${fullTxt}"`);
+                    break;
+
+                case 'shake':
+                    const idx = parseInt(args[0]);
+                    const options = ['none','mode1','mode2','mode3','mode4','mode5'];
+                    if (isNaN(idx) || idx < 0 || idx > 5) {
+                        printToTerminal("[ERROR]: Range boundaries parameters out of execution bounds. Select numbers between [0 - 5].");
+                        break;
+                    }
+                    shakeMode.value = options[idx];
+                    shakeMode.dispatchEvent(new Event('change'));
+                    printToTerminal(`[SYSTEM]: Shake environment swapped successfully to parameter profile configuration: ${options[idx]}`);
+                    break;
+
+                case 'clear':
+                    terminalHistory.textContent = "[Console System Wiped Clean]";
+                    break;
+
+                default:
+                    printToTerminal(`[CLI RUNTIME WARNING]: Command context error: '${cmd}' not listed inside catalog parameters. Type 'help'.`);
+            }
+        }
+
+        // Direct Discord Native Linking Hooks
+        function launchSecureDiscord() {
+            window.location.href = "discord://discord.gg/qnSzFbAyp3";
+            setTimeout(() => { window.open("https://discordapp.com/invite/qnSzFbAyp3", '_blank'); }, 1200);
+        }
+
+        shakeMode.addEventListener('change', function() {
+            customShakePanel.style.display = (this.value === 'custom') ? 'flex' : 'none';
+        });
+
+        audioInput.addEventListener('change', function() {
+            if (this.files.length > 0) {
+                audio.src = URL.createObjectURL(this.files[0]);
+                audioUrlInput.value = "";
+                setupAudio();
+            }
+        });
+
+        loadUrlBtn.addEventListener('click', function() {
+            const url = audioUrlInput.value.trim();
+            if (url) { audio.src = url; setupAudio(); alert("Audio track linked!"); }
+        });
+
+        speedSlider.addEventListener('input', function() {
+            const val = parseFloat(this.value);
+            speedVal.innerText = val.toFixed(2) + 'x';
+            audio.playbackRate = val;
+        });
+
+        preservePitchCheck.addEventListener('change', function() { audio.preservesPitch = this.checked; });
+        loopBtn.addEventListener('click', function() { audio.loop = !audio.loop; this.classList.toggle('active', audio.loop); });
+        skipBackBtn.addEventListener('click', () => audio.currentTime = Math.max(0, audio.currentTime - 10));
+        skipFwdBtn.addEventListener('click', () => audio.currentTime = Math.min(audio.duration || 0, audio.currentTime + 10));
+        
+        // --- BACKGROUND SLOTS CORE PROCESSORS ---
+        bgInput.addEventListener('change', function() {
+            if (this.files.length > 0) {
+                videoBg.pause();
+                videoBg.style.display = "none";
+                
+                bgLayerContainer.classList.remove('default-bg');
+                imageBg.src = URL.createObjectURL(this.files[0]);
+                imageBg.style.display = "block";
+            }
+        });
+
+        videoBgInput.addEventListener('change', function() {
+            if (this.files.length > 0) {
+                imageBg.style.display = "none";
+                
+                bgLayerContainer.classList.remove('default-bg');
+                videoBg.src = URL.createObjectURL(this.files[0]);
+                videoBg.muted = true; // Crucial audio security override
+                videoBg.style.display = "block";
+                videoBg.play().catch(err => console.log("Video autoplay initialized safely."));
+            }
+        });
+
+        textModifier.addEventListener('input', function() { screenText.innerText = this.value; });
+        fontSelect.addEventListener('change', function() { screenText.style.fontFamily = this.value; });
+
+        function setupAudio() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                source = audioContext.createMediaElementSource(audio);
+                audioStreamDest = audioContext.createMediaStreamDestination();
+                source.connect(analyser); analyser.connect(audioContext.destination); source.connect(audioStreamDest); 
+                analyser.fftSize = 512; dataArray = new Uint8Array(analyser.frequencyBinCount);
+            }
+            audio.playbackRate = parseFloat(speedSlider.value); audio.preservesPitch = preservePitchCheck.checked;
+        }
+
+        playBtn.addEventListener('click', () => {
+            if (audioContext && audioContext.state === 'suspended') audioContext.resume();
+            if (audio.paused) { audio.play(); playBtn.innerText = 'Pause'; draw(); } else { audio.pause(); playBtn.innerText = 'Play'; }
+        });
+
+        vegasExportBtn.addEventListener('click', function() {
+            if (!audioContext || !audio.src) { alert("No media on timeline!"); return; }
+            if (!isRendering) {
+                const defaultName = `Project_Render_${Date.now()}`;
+                const userFileName = prompt("Save Video As... \n\nEnter file name output:", defaultName);
+                if (userFileName === null) return; 
+                startVegasRenderSequence(userFileName.trim() || defaultName);
+            } else { stopVegasRenderSequence(); }
+        });
+
+        function startVegasRenderSequence(fileNameString) {
+            recordedChunks = []; isRendering = true;
+            vegasExportBtn.innerText = "⏹ Abort Render"; vegasExportBtn.classList.add('rendering');
+
+            if (audio.paused) { if (audioContext.state === 'suspended') audioContext.resume(); audio.play(); playBtn.innerText = 'Pause'; draw(); }
+
+            const selection = vegasTemplateSelect.value;
+            let frameRateTarget = 30, bitRateTarget = 4000000;
+            if (selection === "60") { frameRateTarget = 60; bitRateTarget = 6500000; }
+            else if (selection === "60-pro") { frameRateTarget = 60; bitRateTarget = 12000000; }
+
+            const canvasStream = canvas.captureStream(frameRateTarget);
+            const outputRenderStream = new MediaStream();
+            canvasStream.getVideoTracks().forEach(track => outputRenderStream.addTrack(track));
+            audioStreamDest.stream.getAudioTracks().forEach(track => outputRenderStream.addTrack(track));
+
+            let formatOptions = { mimeType: 'video/webm;codecs=vp9,opus', videoBitsPerSecond: bitRateTarget };
+            if (!MediaRecorder.isTypeSupported(formatOptions.mimeType)) formatOptions = { mimeType: 'video/webm;codecs=vp8,opus', videoBitsPerSecond: Math.min(bitRateTarget, 6000000) };
+
+            mediaRecorder = new MediaRecorder(outputRenderStream, formatOptions);
+            mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) recordedChunks.push(e.data); };
+            mediaRecorder.onstop = function() {
+                const videoOutputBlob = new Blob(recordedChunks, { type: 'video/webm' });
+                const renderBlobUrl = URL.createObjectURL(videoOutputBlob);
+                const downloadAnchor = document.createElement('a'); downloadAnchor.style.display = 'none'; downloadAnchor.href = renderBlobUrl; downloadAnchor.download = `${fileNameString}.webm`;
+                document.body.appendChild(downloadAnchor); downloadAnchor.click();
+                setTimeout(() => { document.body.removeChild(downloadAnchor); window.URL.revokeObjectURL(renderBlobUrl); }, 150);
+            };
+            mediaRecorder.start(1000);
+        }
+
+        function stopVegasRenderSequence() {
+            isRendering = false; vegasExportBtn.innerText = "💾 Save Video As..."; vegasExportBtn.classList.remove('rendering');
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+        }
+
+        function draw() {
+            if (audio.paused && !isRendering) return; 
+            requestAnimationFrame(draw);
+
+            analyser.getByteFrequencyData(dataArray);
+            let bassSum = 0; const lowFreqRange = 12;
+            for (let i = 0; i < lowFreqRange; i++) bassSum += dataArray[i];
+            let averageBass = bassSum / lowFreqRange; let intensity = averageBass / 255; 
+
+            // --- CAMERA PHYSICS ENGINE ---
+            const currentMode = shakeMode.value;
+            let targetX = 0, targetY = 0, targetScale = 1;
+
+            if (currentMode === 'mode1') { if (intensity > 0.3) targetY = (Math.random() > 0.5 ? 1 : -1) * (intensity * 30); }
+            else if (currentMode === 'mode2') { targetScale = 1 + (intensity * 0.15); }
+            else if (currentMode === 'mode3') { if (intensity > 0.3) targetX = (Math.random() > 0.5 ? 1 : -1) * (intensity * 35); }
+            else if (currentMode === 'mode4') { if (intensity > 0.25) { targetX = (Math.random() - 0.5) * (intensity * 60); targetY = (Math.random() - 0.5) * (intensity * 60); targetScale = 1 + (intensity * 0.25); } }
+            else if (currentMode === 'mode5') { let time = performance.now() * 0.005; targetY = Math.sin(time) * (intensity * 12); targetX = Math.cos(time) * (intensity * 8); targetScale = 1 + (intensity * 0.06); }
+            else if (currentMode === 'custom') {
+                let valX = parseFloat(customX.value), valY = parseFloat(customY.value), valScale = parseFloat(customScale.value) / 100;
+                if (intensity > 0.2) { if (valX > 0) targetX = (Math.random() - 0.5) * (intensity * valX); if (valY > 0) targetY = (Math.random() - 0.5) * (intensity * valY); }
+                targetScale = 1 + (intensity * valScale);
+            }
+
+            document.documentElement.style.setProperty('--shake-x', `${targetX}px`);
+            document.documentElement.style.setProperty('--shake-y', `${targetY}px`);
+            document.documentElement.style.setProperty('--scale', targetScale);
+
+            // --- CANVAS DRAWING PARSER ROUTINES ---
+            canvas.width = canvas.clientWidth; canvas.height = canvas.clientHeight;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const barWidth = (canvas.width / dataArray.length) * 2;
+            let x = 0; const chosenTheme = colorThemeSelect.value;
+
+            for (let i = 0; i < dataArray.length; i++) {
+                let barHeight = (dataArray[i] / 255) * canvas.height;
+                
+                if (chosenTheme === 'neon-spectrum') {
+                    let hueValue = (i * 3 + performance.now() * 0.1) % 360;
+                    ctx.fillStyle = `hsl(${hueValue}, 95%, 60%)`;
+                } else if (chosenTheme === 'matrix-code') {
+                    let greenVariant = Math.floor(140 + (dataArray[i] / 255) * 115);
+                    ctx.fillStyle = `rgb(0, ${greenVariant}, 50)`;
+                } else {
+                    ctx.fillStyle = `hsl(${averageBass + 190}, 85%, 60%)`;
+                }
+
+                ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+                x += barWidth + 1;
+            }
+        }
+    </script>
+</body>
+</html>
